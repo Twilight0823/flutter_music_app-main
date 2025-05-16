@@ -156,12 +156,25 @@ class RegisterState extends State<Register> {
         // Navigate to login screen
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const Login()));
       } catch (e) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          setState(() {
-          _errorMessage = e.toString();
-          });
-        });
+        String errorMessage = e.toString();
+        
+        // Handle specific Firebase Auth errors
+        if (errorMessage.contains('email-already-in-use')) {
+          errorMessage = 'This email is already registered. Please try logging in or use a different email.';
+        } else if (errorMessage.contains('weak-password')) {
+          errorMessage = 'Password is too weak. Please use a stronger password with at least 6 characters.';
+        } else if (errorMessage.contains('invalid-email')) {
+          errorMessage = 'Please enter a valid email address.';
+        } else if (errorMessage.contains('network-request-failed')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+        } else {
+          // Remove the "Exception: " prefix from other error messages
+          errorMessage = errorMessage.replaceAll('Exception: ', '');
+        }
 
+        setState(() {
+          _errorMessage = errorMessage;
+        });
       } finally {
         if (mounted) {
 

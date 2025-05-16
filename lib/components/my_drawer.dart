@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:music_app/auth/login.dart';
+import 'package:music_app/pages/credits_page.dart';
 import '../pages/settings_page.dart';
 
 class MyDrawer extends StatelessWidget {
@@ -29,7 +30,7 @@ class MyDrawer extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Image.asset(
-                'assets/images/S.png',
+                'assets/images/Spatiplay_icon.png',
                 width: 80,
                 height: 80,
                 fit: BoxFit.cover,
@@ -76,6 +77,24 @@ class MyDrawer extends StatelessWidget {
             ),
           ),
           
+          //Credits
+          Padding(
+            padding: const EdgeInsets.only(left: 25.0),
+            child: ListTile(
+              title: const Text("C R E D I T S"),
+              leading: const Icon(Icons.person),
+              onTap: () {
+                Navigator.pop(context);
+                // Navigate to settings
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const CreditsPage(),
+                  ),
+                );
+              },
+            ),
+          ),
           
           const Spacer(), // Push logout to bottom
           

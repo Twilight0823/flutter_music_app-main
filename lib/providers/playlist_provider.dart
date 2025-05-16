@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/song.dart';
 import '../models/playlist.dart';
@@ -5,17 +6,69 @@ import '../services/playlist_service.dart';
 
 class PlaylistProvider with ChangeNotifier {
   final PlaylistService _playlistService = PlaylistService();
+  final FirebaseAuth _auth = FirebaseAuth.instance; 
   List<Playlist> _userPlaylists = [];
-  Playlist _currentPlaylist = Playlist.empty('My Playlist');
+  Playlist? _currentPlaylist;
   bool _isLoading = false;
   String? _error;
 
   // Getters
   List<Playlist> get userPlaylists => _userPlaylists;
-  Playlist get currentPlaylist => _currentPlaylist;
+  Playlist? get currentPlaylist => _currentPlaylist;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  List<Song> get currentSongs => _currentPlaylist.songs;
+  List<Song> get currentSongs => _currentPlaylist?.songs ?? [];
+
+  // Get current user ID
+  String get _userId => _auth.currentUser?.uid ?? '';
+
+  // Private utility methods
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    notifyListeners();
+  }
+
+  void _setError(String? errorMsg) {
+    _error = errorMsg;
+    notifyListeners();
+  }
+  
+  void _updateCurrentPlaylistInList() {
+    if (_currentPlaylist == null || _currentPlaylist!.id.isEmpty) return;
+    
+    final index = _userPlaylists.indexWhere((p) => p.id == _currentPlaylist!.id);
+    if (index >= 0) {
+      _userPlaylists[index] = _currentPlaylist!;
+    } else {
+      _userPlaylists.add(_currentPlaylist!);
+    }
+  }
+  
+  // Error handling wrapper for playlist operations
+  Future<T> _performPlaylistOperation<T>(
+    String operationName,
+    Future<T> Function() operation
+  ) async {
+    _setLoading(true);
+    _error = null;
+    
+    try {
+      final result = await operation();
+      return result;
+    } catch (e) {
+      debugPrint('Error $operationName: $e');
+      _setError('Failed to $operationName: $e');
+      rethrow;
+    } finally {
+      _setLoading(false);
+    }
+  }
+  
+  // Public methods
+  void clearError() {
+    _error = null;
+    notifyListeners();
+  }
 
   // Set current playlist
   void setCurrentPlaylist(Playlist playlist) {
@@ -25,135 +78,173 @@ class PlaylistProvider with ChangeNotifier {
 
   // Create new playlist
   Future<void> createNewPlaylist(String name) async {
-    _currentPlaylist = Playlist.empty(name);
-    
-    // Immediately save the new playlist to Firestore
-    try {
-      final playlistId = await _playlistService.savePlaylist(_currentPlaylist);
-      _currentPlaylist = _currentPlaylist.copyWith(id: playlistId);
+    return _performPlaylistOperation('creating playlist', () async {
+      final newPlaylist = Playlist(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        name: name,
+        songs: [],
+        createdAt: DateTime.now(),
+        createdBy: _userId,
+      );
       
-      // Add to local list
-      if (!_userPlaylists.any((p) => p.id == playlistId)) {
-        _userPlaylists.add(_currentPlaylist);
-      }
-    } catch (e) {
-      debugPrint('Error creating new playlist: $e');
-      _setError('Failed to create playlist: $e');
-    }
-    
-    notifyListeners();
-  }
-
-  void addToPlaylist(Song song) {
-    if (!_currentPlaylist.containsSong(song.id)) {
-      final updatedSongs = List<Song>.from(_currentPlaylist.songs)..add(song);
-      _currentPlaylist = _currentPlaylist.copyWith(songs: updatedSongs);
+      // Save to Firestore
+      final playlistId = await _playlistService.savePlaylist(newPlaylist);
+      final savedPlaylist = newPlaylist.copyWith(id: playlistId);
+      
+      _userPlaylists.add(savedPlaylist);
+      _currentPlaylist = savedPlaylist;
       notifyListeners();
-    }
+      return;
+    });
   }
 
-  // Remove song from current playlist - The original method
-  void removeFromPlaylist(String songId) {
-    final updatedSongs = List<Song>.from(_currentPlaylist.songs)
-      ..removeWhere((song) => song.id == songId);
-    _currentPlaylist = _currentPlaylist.copyWith(songs: updatedSongs);
-    notifyListeners();
+  // Update playlist attributes
+  Future<void> updatePlaylist(
+    String playlistId, {
+    String? name,
+  }) async {
+    return _performPlaylistOperation('updating playlist', () async {
+      final index = _userPlaylists.indexWhere((p) => p.id == playlistId);
+      if (index == -1) throw Exception('Playlist not found');
+
+      final updatedPlaylist = _userPlaylists[index].copyWith(
+        name: name ?? _userPlaylists[index].name,
+      );
+
+      // Update in Firestore
+      await _playlistService.updatePlaylist(updatedPlaylist);
+
+      _userPlaylists[index] = updatedPlaylist;
+      if (_currentPlaylist?.id == playlistId) {
+        _currentPlaylist = updatedPlaylist;
+      }
+
+      notifyListeners();
+      return;
+    });
   }
 
-  // Add the new removeSongFromPlaylist method that's being called elsewhere
-  void removeSongFromPlaylist(String songId) {
-    // Simply call the existing method to maintain consistency
-    removeFromPlaylist(songId);
+  // Song management methods
+  Future<void> addSongToPlaylist(String playlistId, Song song) async {
+    return _performPlaylistOperation('adding song', () async {
+      final index = _userPlaylists.indexWhere((p) => p.id == playlistId);
+      if (index == -1) throw Exception('Playlist not found');
+
+      // Check if song already exists
+      if (_userPlaylists[index].songs.any((s) => s.id == song.id)) {
+        return; // Song already in playlist, do nothing
+      }
+
+      final updatedPlaylist = _userPlaylists[index].copyWith(
+        songs: [..._userPlaylists[index].songs, song],
+      );
+
+      // Update in Firestore
+      await _playlistService.updatePlaylist(updatedPlaylist);
+
+      _userPlaylists[index] = updatedPlaylist;
+      if (_currentPlaylist?.id == playlistId) {
+        _currentPlaylist = updatedPlaylist;
+      }
+
+      notifyListeners();
+      return;
+    });
+  }
+
+  Future<void> removeSongFromPlaylist(String playlistId, String songId) async {
+    return _performPlaylistOperation('removing song', () async {
+      final index = _userPlaylists.indexWhere((p) => p.id == playlistId);
+      if (index == -1) throw Exception('Playlist not found');
+
+      final updatedSongs = _userPlaylists[index].songs
+          .where((song) => song.id != songId)
+          .toList();
+
+      final updatedPlaylist = _userPlaylists[index].copyWith(
+        songs: updatedSongs,
+      );
+
+      // Update in Firestore
+      await _playlistService.updatePlaylist(updatedPlaylist);
+
+      _userPlaylists[index] = updatedPlaylist;
+      if (_currentPlaylist?.id == playlistId) {
+        _currentPlaylist = updatedPlaylist;
+      }
+
+      notifyListeners();
+      return;
+    });
   }
 
   // Add reorderSongs method to allow reordering of songs in playlist
   void reorderSongs(int oldIndex, int newIndex) {
+    if (_currentPlaylist == null) return;
+    
     if (oldIndex < newIndex) {
       // Removing the item at oldIndex will shorten the list by 1.
       newIndex -= 1;
     }
 
-    final List<Song> updatedSongs = List<Song>.from(_currentPlaylist.songs);
+    final List<Song> updatedSongs = List<Song>.from(_currentPlaylist?.songs ?? []);
     final Song song = updatedSongs.removeAt(oldIndex);
     updatedSongs.insert(newIndex, song);
 
-    _currentPlaylist = _currentPlaylist.copyWith(songs: updatedSongs);
-    notifyListeners();
-  }
-
-  // Toggle playlist visibility
-  void toggleVisibility() {
-    _currentPlaylist = _currentPlaylist.copyWith(isPublic: !_currentPlaylist.isPublic);
+    _currentPlaylist = _currentPlaylist?.copyWith(songs: updatedSongs) ?? _currentPlaylist;
     notifyListeners();
   }
 
   // Rename current playlist
   void renamePlaylist(String newName) {
-    _currentPlaylist = _currentPlaylist.copyWith(name: newName);
+    if (_currentPlaylist == null) return;
+    
+    _currentPlaylist = _currentPlaylist?.copyWith(name: newName) ?? _currentPlaylist;
     notifyListeners();
   }
 
   // Clear current playlist
   void clearPlaylist() {
-    _currentPlaylist = _currentPlaylist.copyWith(songs: []);
+    _currentPlaylist = null;
     notifyListeners();
   }
 
   // Save current playlist to Firebase
   Future<String> savePlaylist() async {
-    _setLoading(true);
-    try {
-      final playlistId = await _playlistService.savePlaylist(_currentPlaylist);
-      _currentPlaylist = _currentPlaylist.copyWith(id: playlistId);
-      
-      // Update local playlists array
-      final index = _userPlaylists.indexWhere((p) => p.id == playlistId);
-      if (index >= 0) {
-        _userPlaylists[index] = _currentPlaylist;
-      } else {
-        _userPlaylists.add(_currentPlaylist);
+    return _performPlaylistOperation('saving playlist', () async {
+      if (_currentPlaylist == null) {
+        throw Exception('No current playlist to save');
       }
       
+      final playlistId = await _playlistService.savePlaylist(_currentPlaylist!);
+      _currentPlaylist = _currentPlaylist?.copyWith(id: playlistId) ?? _currentPlaylist;
+      
+      _updateCurrentPlaylistInList();
       notifyListeners();
       return playlistId;
-    } catch (e) {
-      debugPrint('Error saving playlist: $e');
-      _setError('Failed to save playlist: $e');
-      rethrow;
-    } finally {
-      _setLoading(false);
-    }
+    });
   }
 
   // Load playlist by ID
   Future<void> loadPlaylist(String playlistId) async {
-    _setLoading(true);
-    try {
+    return _performPlaylistOperation('loading playlist', () async {
       final playlist = await _playlistService.loadPlaylist(playlistId);
       _currentPlaylist = playlist;
       notifyListeners();
-    } catch (e) {
-      debugPrint('Error loading playlist: $e');
-      _setError('Failed to load playlist: $e');
-      rethrow;
-    } finally {
-      _setLoading(false);
-    }
+      return;
+    });
   }
 
-  // Import playlist by ID - NEW METHOD
+  // Import playlist by ID
   Future<bool> importPlaylist(String playlistId) async {
-    _setLoading(true);
-    _error = null;
-    
-    try {
+    return _performPlaylistOperation('importing playlist', () async {
       // First, load the shared playlist data
       final playlist = await _playlistService.loadPlaylist(playlistId);
       
-      // Create a copy with a different ID to store as user's own
+      // Create a copy with a new ID and set the current user as creator
       final importedPlaylist = playlist.copyWith(
-        id: null, // Will generate new ID when saved
-        name: playlist.name,
+        id: '', // Will generate new ID when saved
+        createdBy: _userId, // Set the current user as creator
       );
       
       // Save the imported playlist to user's account
@@ -171,95 +262,62 @@ class PlaylistProvider with ChangeNotifier {
       debugPrint('Successfully imported playlist: ${finalPlaylist.name}');
       notifyListeners();
       return true;
-    } catch (e) {
-      debugPrint('Error importing playlist: $e');
-      _setError('Failed to import playlist: $e');
-      return false;
-    } finally {
-      _setLoading(false);
-    }
+    });
   }
 
   // Load all user playlists
   Future<void> loadUserPlaylists() async {
-    _setLoading(true);
-    try {
+    return _performPlaylistOperation('loading user playlists', () async {
       _userPlaylists = await _playlistService.getUserPlaylists();
       debugPrint('Loaded ${_userPlaylists.length} playlists from Firestore');
-      
-      // Force UI update
       notifyListeners();
-    } catch (e) {
-      debugPrint('Error loading user playlists: $e');
-      _setError('Failed to load playlists: $e');
-      _userPlaylists = [];
-      notifyListeners();
-    } finally {
-      _setLoading(false);
-    }
+      return;
+    });
   }
 
   // Delete playlist
   Future<void> deletePlaylist(String playlistId) async {
-    _setLoading(true);
-    try {
+    return _performPlaylistOperation('deleting playlist', () async {
       await _playlistService.deletePlaylist(playlistId);
       _userPlaylists.removeWhere((playlist) => playlist.id == playlistId);
       
-      // If deleted the current playlist, create a new empty one
-      if (_currentPlaylist.id == playlistId) {
-        _currentPlaylist = Playlist.empty('My Playlist');
+      if (_currentPlaylist?.id == playlistId) {
+        _currentPlaylist = null;
       }
       notifyListeners();
-    } catch (e) {
-      debugPrint('Error deleting playlist: $e');
-      _setError('Failed to delete playlist: $e');
-      rethrow;
-    } finally {
-      _setLoading(false);
-    }
+      return;
+    });
   }
 
   // Update current playlist in Firestore
   Future<void> updateCurrentPlaylist() async {
-    if (_currentPlaylist.id == null || _currentPlaylist.id!.isEmpty) {
+    if (_currentPlaylist == null) return;
+    
+    if (_currentPlaylist?.id == null || _currentPlaylist!.id.isEmpty) {
       await savePlaylist();
       return;
     }
     
-    _setLoading(true);
-    try {
-      await _playlistService.updatePlaylist(_currentPlaylist);
-      
-      // Update local playlists array
-      final index = _userPlaylists.indexWhere((p) => p.id == _currentPlaylist.id);
-      if (index >= 0) {
-        _userPlaylists[index] = _currentPlaylist;
-      }
-      
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error updating playlist: $e');
-      _setError('Failed to update playlist: $e');
-      rethrow;
-    } finally {
-      _setLoading(false);
-    }
+    return _performPlaylistOperation('updating current playlist', () async {
+      await _playlistService.updatePlaylist(_currentPlaylist!);
+      _updateCurrentPlaylistInList();
+      return;
+    });
   }
 
-  // Helper methods
-  void _setLoading(bool loading) {
-    _isLoading = loading;
+  // Simplified song management for current playlist
+  void removeFromPlaylist(String id) {
+    if (_currentPlaylist == null) return;
+    final updatedSongs = _currentPlaylist!.songs.where((s) => s.id != id).toList();
+    _currentPlaylist = _currentPlaylist!.copyWith(songs: updatedSongs);
     notifyListeners();
   }
 
-  void _setError(String? errorMsg) {
-    _error = errorMsg;
-    notifyListeners();
-  }
-
-  void clearError() {
-    _error = null;
+  void addToPlaylist(Song song) {
+    if (_currentPlaylist == null) return;
+    if (_currentPlaylist!.songs.any((s) => s.id == song.id)) return;
+    final updatedSongs = [..._currentPlaylist!.songs, song];
+    _currentPlaylist = _currentPlaylist!.copyWith(songs: updatedSongs);
     notifyListeners();
   }
 }

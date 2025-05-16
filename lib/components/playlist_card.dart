@@ -67,22 +67,6 @@ class PlaylistCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        Icon(
-                          playlist.isPublic ? Icons.public : Icons.lock,
-                          size: 10,
-                          color: Colors.grey[600],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          playlist.isPublic ? 'Public' : 'Private',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
                   ],
                 ),
               ),
@@ -95,14 +79,17 @@ class PlaylistCard extends StatelessWidget {
 
   Widget _buildPlaceholder() {
     return Container(
-      color: Colors.grey[300],
-      child: const Center(
-        child: Icon(
-          Icons.playlist_play,
-          size: 64,
-          color: Colors.grey,
-        ),
-      ),
-    );
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        image: DecorationImage(
+                          image: playlist.songs.isNotEmpty && playlist.songs.first.imageUrl.isNotEmpty
+                              ? NetworkImage(playlist.songs.first.imageUrl)
+                              : const AssetImage('assets/images/default_playlist.png') as ImageProvider,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    );
   }
 }

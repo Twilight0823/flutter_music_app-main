@@ -56,7 +56,7 @@ class LoginState extends State<Login> {
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           setState(() {
-          _errorMessage = e.toString();
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
           });
         });
         
@@ -65,7 +65,7 @@ class LoginState extends State<Login> {
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
           setState(() {
-          _isLoading = false;
+            _isLoading = false;
           });
         });
         }
@@ -117,9 +117,6 @@ class LoginState extends State<Login> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        elevation: 0,
-      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -157,12 +154,16 @@ class LoginState extends State<Login> {
                   padding: const EdgeInsets.all(12),
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
-                    color: Colors.red.shade100,
+                    color: Theme.of(context).colorScheme.errorContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     _errorMessage,
-                    style: const TextStyle(color: Colors.red),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                      fontSize: 14,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ),
               

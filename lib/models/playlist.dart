@@ -1,34 +1,63 @@
 import 'song.dart';
 
 class Playlist {
-  final String? id;
+  final String id;
   final String name;
   final List<Song> songs;
-  final bool isPublic;
-  final String? createdBy;
+  final DateTime createdAt;
+  final String coverImageUrl;
+  final String createdBy; // Added createdBy field
 
   Playlist({
-    this.id,
+    required this.id,
     required this.name,
     required this.songs,
-    this.isPublic = false,
-    this.createdBy,
+    required this.createdAt,
+    this.coverImageUrl = '',
+    required this.createdBy, // Required in constructor
   });
 
-  // Copy constructor with optional parameter updates
+  factory Playlist.fromJson(Map<String, dynamic> json) {
+    return Playlist(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      songs: (json['songs'] as List?)
+          ?.map((songJson) => Song.fromJson(songJson as Map<String, dynamic>))
+          .toList() ?? [],
+      createdAt: json['createdAt'] is String 
+          ? DateTime.parse(json['createdAt'] as String)
+          : (json['createdAt'] as DateTime),
+      coverImageUrl: json['coverImageUrl'] as String? ?? '',
+      createdBy: json['createdBy'] as String? ?? '', // Added to fromJson
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'songs': songs.map((song) => song.toJson()).toList(),
+      'createdAt': createdAt.toIso8601String(),
+      'coverImageUrl': coverImageUrl,
+      'createdBy': createdBy, // Added to toJson
+    };
+  }
+
   Playlist copyWith({
     String? id,
     String? name,
     List<Song>? songs,
-    bool? isPublic,
-    String? createdBy,
+    DateTime? createdAt,
+    String? coverImageUrl,
+    String? createdBy, // Added to copyWith
   }) {
     return Playlist(
       id: id ?? this.id,
       name: name ?? this.name,
       songs: songs ?? this.songs,
-      isPublic: isPublic ?? this.isPublic,
-      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      coverImageUrl: coverImageUrl ?? this.coverImageUrl,
+      createdBy: createdBy ?? this.createdBy, // Added to copyWith
     );
   }
 
@@ -42,21 +71,22 @@ class Playlist {
 
   // Generate a shareable link
   String generateShareLink() {
-    if (id == null) throw Exception('Playlist ID is required for sharing');
     return 'https://spatiplay.com/playlist/$id';
   }
 
-  // Create an empty playlist
-  factory Playlist.empty(String name) {
+  // Create an empty playlist with creator
+  factory Playlist.empty(String name, String userId) {
     return Playlist(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
       songs: [],
-      isPublic: false,
+      createdAt: DateTime.now(),
+      createdBy: userId, // Added userId parameter
     );
   }
 
   @override
   String toString() {
-    return 'Playlist{id: $id, name: $name, songs: ${songs.length}, isPublic: $isPublic}';
+    return 'Playlist{id: $id, name: $name, songs: ${songs.length}, createdAt: $createdAt, createdBy: $createdBy}';
   }
 }

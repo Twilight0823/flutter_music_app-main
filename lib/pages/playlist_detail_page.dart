@@ -6,6 +6,7 @@ import '../providers/playlist_provider.dart';
 import '../services/audio_service.dart';
 import '../components/mini_player.dart';
 import 'song_page.dart';
+import 'search_page.dart';
 
 class PlaylistDetailPage extends StatefulWidget {
   const PlaylistDetailPage({super.key});
@@ -26,22 +27,15 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
   
   void _loadPlaylistData() {
     final playlistProvider = Provider.of<PlaylistProvider>(context, listen: false);
-    _nameController.text = playlistProvider.currentPlaylist.name;
+    _nameController.text = playlistProvider.currentPlaylist!.name;
   }
   
   void _sharePlaylist() async {
     final provider = Provider.of<PlaylistProvider>(context, listen: false);
     final playlist = provider.currentPlaylist;
     
-    if (playlist.id == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot share unsaved playlist')),
-      );
-      return;
-    }
-    
     // Generate shareable link in spatiplay.com format to match the import page requirements
-    final shareLink = 'https://spatiplay.com/playlist/${playlist.id}';
+    final shareLink = 'https://spatiplay.com/playlist/${playlist!.id}';
     final shareText = 'Check out my playlist "${playlist.name}" on Spatiplay! $shareLink';
     
     // Show bottom sheet with share options
@@ -162,54 +156,51 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
       _isEditing = !_isEditing;
       if (_isEditing) {
         _nameController.text = Provider.of<PlaylistProvider>(context, listen: false)
-            .currentPlaylist.name;
+            .currentPlaylist!.name;
       }
     });
-  }
-  
-  Future<void> _savePlaylistName() async {
-    final provider = Provider.of<PlaylistProvider>(context, listen: false);
-    
-    if (_nameController.text.trim().isNotEmpty) {
-      // Update the playlist name
-      provider.renamePlaylist(_nameController.text.trim());
-      
-      // Save the changes to database
-      await provider.updateCurrentPlaylist();
-      
-      setState(() {
-        _isEditing = false;
-      });
-    }
   }
   
   Future<void> _deletePlaylist() async {
     final provider = Provider.of<PlaylistProvider>(context, listen: false);
     final playlist = provider.currentPlaylist;
     
-    if (playlist.id != null) {
-      bool confirmDelete = await showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Delete Playlist'),
-          content: Text('Are you sure you want to delete "${playlist.name}"?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        ),
-      ) ?? false;
-      
-      if (confirmDelete) {
-        await provider.deletePlaylist(playlist.id!);
+    bool confirmDelete = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Playlist'),
+        content: Text('Are you sure you want to delete "${playlist!.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    ) ?? false;
+    
+    if (confirmDelete) {
+      try {
+        await provider.deletePlaylist(playlist!.id);
         if (context.mounted) {
-          Navigator.pop(context); // Return to previous screen
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Playlist deleted successfully!'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          Navigator.pop(context); 
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete playlist: $e')),
+          );
         }
       }
     }
@@ -225,25 +216,84 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     );
   }
   
-  Future<void> _removeSongFromPlaylist(Song song) async {
+  void _removeSongFromPlaylist(Song song) {
     final provider = Provider.of<PlaylistProvider>(context, listen: false);
-    
-    // Remove the song from the current playlist
+
     provider.removeFromPlaylist(song.id);
     
-    // Save changes to database
-    await provider.updateCurrentPlaylist();
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Removed "${song.title}" from playlist'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () async {
-            // Add the song back
-            provider.addToPlaylist(song);
-            // Save changes
-            await provider.updateCurrentPlaylist();
+    provider.updateCurrentPlaylist().then((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Removed "${song.title}" from playlist'),
+          action: SnackBarAction(
+            label: 'Undo',
+            backgroundColor: const Color.fromARGB(218, 255, 255, 255),
+            onPressed: () {
+              provider.addToPlaylist(song);
+              provider.updateCurrentPlaylist();
+            },
+          ),
+        ),
+      );
+    }).catchError((e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to remove song: $e')),
+      );
+    });
+  }
+
+  Future<void> _saveChanges() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+
+    final provider = Provider.of<PlaylistProvider>(context, listen: false);
+    final playlist = provider.currentPlaylist;
+    if (playlist == null) return;
+
+    try {
+      // Use the appropriate provider method
+      await provider.updatePlaylist(
+        playlist.id,
+        name: name,
+      );
+      
+      setState(() {
+        _isEditing = false;
+      });
+      
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Playlist name updated successfully!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update playlist: $e')),
+      );
+    }
+  }
+
+  void _navigateToSearch() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SearchPage(
+          isPlaylistSearch: true,
+          onSongSelected: (song) {
+            final provider = Provider.of<PlaylistProvider>(context, listen: false);
+            final playlist = provider.currentPlaylist;
+            if (playlist != null) {
+              // Use provider method directly
+              provider.addSongToPlaylist(playlist.id, song).catchError((e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to add song: $e')),
+                  );
+                }
+              });
+            }
           },
         ),
       ),
@@ -255,6 +305,13 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
     return Consumer<PlaylistProvider>(
       builder: (context, playlistProvider, child) {
         final playlist = playlistProvider.currentPlaylist;
+        if (playlist == null) {
+          return const Scaffold(
+            body: Center(
+              child: Text('No playlist selected'),
+            ),
+          );
+        }
         
         return Scaffold(
           appBar: AppBar(
@@ -281,7 +338,7 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
               if (_isEditing)
                 IconButton(
                   icon: const Icon(Icons.check),
-                  onPressed: _savePlaylistName,
+                  onPressed: _saveChanges,
                   tooltip: 'Save',
                 )
               else
@@ -303,36 +360,23 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                 ),
                 child: Row(
                   children: [
                     // Playlist artwork or placeholder
                     Container(
-                      width: 100,
-                      height: 100,
+                      width: 120,
+                      height: 120,
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
+                        image: DecorationImage(
+                          image: playlist.songs.isNotEmpty && playlist.songs.first.imageUrl.isNotEmpty
+                              ? NetworkImage(playlist.songs.first.imageUrl)
+                              : const AssetImage('assets/images/default_playlist.png') as ImageProvider,
+                          fit: BoxFit.cover,
+                        ),
                       ),
-                      child: playlist.songs.isNotEmpty && playlist.songs.first.imageUrl.isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.network(
-                              playlist.songs.first.imageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => Icon(
-                                Icons.playlist_play,
-                                size: 50,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          )
-                        : Icon(
-                            Icons.playlist_play,
-                            size: 50,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
                     ),
                     
                     const SizedBox(width: 16),
@@ -370,7 +414,6 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                         ],
                       ),
                     ),
-                    
                   ],
                 ),
               ),
@@ -398,12 +441,12 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                     )
                   : ReorderableListView.builder(
                       itemCount: playlist.songs.length,
-                      onReorder: (oldIndex, newIndex) async {
-                        // Update the song order in the provider
+                      onReorder: (oldIndex, newIndex) {
+                        // Use provider method for reordering
                         playlistProvider.reorderSongs(oldIndex, newIndex);
                         
-                        // Save the changes to database
-                        await playlistProvider.updateCurrentPlaylist();
+                        // Update database
+                        playlistProvider.updateCurrentPlaylist();
                       },
                       itemBuilder: (context, index) {
                         final song = playlist.songs[index];
@@ -475,6 +518,10 @@ class _PlaylistDetailPageState extends State<PlaylistDetailPage> {
                     ),
               ),
             ],
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: _navigateToSearch,
+            child: const Icon(Icons.add),
           ),
           // Add the mini player
           bottomNavigationBar: const MiniPlayer(),

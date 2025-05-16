@@ -2,14 +2,16 @@ class Song {
   final String id;
   final String title;
   final String artist;
+  final String album;
   final String imageUrl;
   final String audioUrl;
-  final int duration;
+  final Duration duration;
 
   Song({
     required this.id,
     required this.title,
     required this.artist,
+    required this.album,
     required this.imageUrl,
     required this.audioUrl,
     required this.duration,
@@ -42,9 +44,10 @@ class Song {
       id: trackId,
       title: json['title'] ?? 'Unknown Title',
       artist: artistName,
+      album: json['album'] ?? 'Unknown Album',
       imageUrl: artworkUrl,
       audioUrl: streamUrl,
-      duration: (json['duration'] ?? 0).toInt(),
+      duration: Duration(seconds: json['duration'] ?? 0),
     );
   }
 
@@ -53,9 +56,10 @@ class Song {
       id: json['id'] ?? '',
       title: json['title'] ?? 'Unknown Title',
       artist: json['artist'] ?? 'Unknown Artist',
+      album: json['album'] ?? 'Unknown Album',
       imageUrl: json['imageUrl'] ?? '',
       audioUrl: json['audioUrl'] ?? '',
-      duration: json['duration'] ?? 0,
+      duration: Duration(seconds: json['duration'] ?? 0),
     );
   }
 
@@ -64,9 +68,35 @@ class Song {
       'id': id,
       'title': title,
       'artist': artist,
+      'album': album,
       'imageUrl': imageUrl,
       'audioUrl': audioUrl,
-      'duration': duration,
+      'duration': duration.inSeconds,
     };
+  }
+
+  Song copyWith({
+    String? id,
+    String? title,
+    String? artist,
+    String? album,
+    String? imageUrl,
+    String? audioUrl,
+    Duration? duration,
+  }) {
+    return Song(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      imageUrl: imageUrl ?? this.imageUrl,
+      audioUrl: audioUrl ?? this.audioUrl,
+      duration: duration ?? this.duration,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'Song{id: $id, title: $title, artist: $artist, album: $album}';
   }
 }

@@ -9,24 +9,50 @@ class PlaylistService {
 
   // Get current user ID
   String? get _userId => _auth.currentUser?.uid;
+  
+  // Centralized error handler
+  Exception _handleError(String operation, dynamic error) {
+    return Exception('Failed to $operation: $error');
+  }
+
+  // Check user authentication 
+  void _checkAuthentication() {
+    if (_userId == null) throw Exception('User not authenticated');
+  }
+
+  // Convert Firestore data to Playlist object
+  Playlist _convertToPlaylist(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final List<dynamic> songsData = data['songs'] ?? [];
+    final List<Song> songs = songsData.map((song) => Song.fromJson(song)).toList();
+    
+    return Playlist(
+      id: doc.id,
+      name: data['name'] ?? 'Untitled Playlist',
+      songs: songs,
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      coverImageUrl: data['coverImageUrl'] as String? ?? '',
+      createdBy: data['createdBy'] as String? ?? '',
+    );
+  }
 
   // Save playlist to Firestore
   Future<String> savePlaylist(Playlist playlist) async {
-    if (_userId == null) throw Exception('User not authenticated');
+    _checkAuthentication();
     
     final playlistData = {
       'name': playlist.name,
       'songs': playlist.songs.map((song) => song.toJson()).toList(),
-      'isPublic': playlist.isPublic,
       'createdAt': FieldValue.serverTimestamp(),
-      'createdBy': _userId,
+      'createdBy': playlist.createdBy.isNotEmpty ? playlist.createdBy : _userId,
+      'coverImageUrl': playlist.coverImageUrl,
     };
 
     try {
       final docRef = await _firestore.collection('playlists').add(playlistData);
       return docRef.id;
     } catch (e) {
-      throw Exception('Failed to save playlist: $e');
+      throw _handleError('save playlist', e);
     }
   }
 
@@ -36,91 +62,57 @@ class PlaylistService {
       final doc = await _firestore.collection('playlists').doc(playlistId).get();
       if (!doc.exists) throw Exception('Playlist not found');
       
-      final data = doc.data()!;
-      final List<dynamic> songsData = data['songs'] ?? [];
-      final List<Song> songs = songsData.map((song) => Song.fromJson(song)).toList();
-      
-      return Playlist(
-        id: doc.id,
-        name: data['name'] ?? 'Untitled Playlist',
-        songs: songs,
-        isPublic: data['isPublic'] ?? false,
-        createdBy: data['createdBy'],
-      );
+      return _convertToPlaylist(doc);
     } catch (e) {
-      throw Exception('Failed to load playlist: $e');
+      throw _handleError('load playlist', e);
     }
   }
 
   // Get all playlists for current user
   Future<List<Playlist>> getUserPlaylists() async {
-  if (_userId == null) throw Exception('User not authenticated');
-  
-  try {
-    // Simplified query that doesn't require a complex index
-    final querySnapshot = await _firestore
-        .collection('playlists')
-        .where('createdBy', isEqualTo: _userId)
-        .get();
+    _checkAuthentication();
     
-    // Sort the results in Dart instead of in the query
-    final results = querySnapshot.docs.map((doc) {
-      final data = doc.data();
-      final List<dynamic> songsData = data['songs'] ?? [];
-      final List<Song> songs = songsData.map((song) => Song.fromJson(song)).toList();
+    try {
+      final querySnapshot = await _firestore
+          .collection('playlists')
+          .where('createdBy', isEqualTo: _userId)
+          .get();
       
-      return Playlist(
-        id: doc.id,
-        name: data['name'] ?? 'Untitled Playlist',
-        songs: songs,
-        isPublic: data['isPublic'] ?? false,
-        createdBy: data['createdBy'],
-      );
-    }).toList();
-    
-    // Sort by createdAt if available
-    results.sort((a, b) {
-      final aData = querySnapshot.docs.firstWhere((doc) => doc.id == a.id).data();
-      final bData = querySnapshot.docs.firstWhere((doc) => doc.id == b.id).data();
+      final results = querySnapshot.docs.map(_convertToPlaylist).toList();
       
-      final aTime = aData['createdAt'] as Timestamp?;
-      final bTime = bData['createdAt'] as Timestamp?;
+      // Sort by createdAt if available
+      results.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
-      if (aTime == null || bTime == null) return 0;
-      return bTime.compareTo(aTime); // Descending order
-    });
-    
-    return results;
-  } catch (e) {
-    throw Exception('Failed to get user playlists: $e');
+      return results;
+    } catch (e) {
+      throw _handleError('get user playlists', e);
+    }
   }
-}
 
   // Delete a playlist
   Future<void> deletePlaylist(String playlistId) async {
-    if (_userId == null) throw Exception('User not authenticated');
+    _checkAuthentication();
     
     try {
       await _firestore.collection('playlists').doc(playlistId).delete();
     } catch (e) {
-      throw Exception('Failed to delete playlist: $e');
+      throw _handleError('delete playlist', e);
     }
   }
   
   // Update a playlist
   Future<void> updatePlaylist(Playlist playlist) async {
-    if (_userId == null) throw Exception('User not authenticated');
-    if (playlist.id == null) throw Exception('Playlist ID cannot be null');
+    _checkAuthentication();
     
     try {
       await _firestore.collection('playlists').doc(playlist.id).update({
         'name': playlist.name,
         'songs': playlist.songs.map((song) => song.toJson()).toList(),
-        'isPublic': playlist.isPublic,
         'updatedAt': FieldValue.serverTimestamp(),
+        'coverImageUrl': playlist.coverImageUrl,
       });
     } catch (e) {
-      throw Exception('Failed to update playlist: $e');
+      throw _handleError('update playlist', e);
     }
   }
 }

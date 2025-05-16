@@ -12,7 +12,7 @@ class SongPage extends StatefulWidget {
   const SongPage({
     super.key,
     required this.song,
-    this.shouldPlayOnLoad = true,
+    this.shouldPlayOnLoad = false,
   });
 
   @override
@@ -200,7 +200,7 @@ class _SongPageState extends State<SongPage> with AutomaticKeepAliveClientMixin 
     final playlistProvider = Provider.of<PlaylistProvider>(context, listen: false);
     final currentPlaylist = playlistProvider.currentPlaylist;
     
-    if (currentPlaylist.songs.isNotEmpty) {
+    if (currentPlaylist!.songs.isNotEmpty) {
       // Find current song index in playlist
       final currentIndex = currentPlaylist.songs.indexWhere((s) => s.id == widget.song.id);
       
@@ -241,7 +241,7 @@ class _SongPageState extends State<SongPage> with AutomaticKeepAliveClientMixin 
     final playlistProvider = Provider.of<PlaylistProvider>(context, listen: false);
     final currentPlaylist = playlistProvider.currentPlaylist;
     
-    if (currentPlaylist.songs.isNotEmpty) {
+    if (currentPlaylist!.songs.isNotEmpty) {
       // Find current song index in playlist
       final currentIndex = currentPlaylist.songs.indexWhere((s) => s.id == widget.song.id);
       

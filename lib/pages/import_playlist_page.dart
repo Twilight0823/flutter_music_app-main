@@ -105,22 +105,22 @@ class _ImportPlaylistPageState extends State<ImportPlaylistPage> {
         title: const Text('Import Playlist'),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(10.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Image at the top
             const Icon(
               Icons.playlist_add_check,
-              size: 80,
+              size: 40,
               color: Colors.grey,
             ),
             
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             
             const Text(
               'Import a Shared Playlist',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             
@@ -132,7 +132,7 @@ class _ImportPlaylistPageState extends State<ImportPlaylistPage> {
               textAlign: TextAlign.center,
             ),
             
-            const SizedBox(height: 32),
+            const SizedBox(height: 22),
             
             // Text field for link
             TextField(
@@ -153,7 +153,7 @@ class _ImportPlaylistPageState extends State<ImportPlaylistPage> {
               onSubmitted: (_) => _importPlaylist(),
             ),
             
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             
             // Error message
             if (_error != null)
@@ -162,24 +162,24 @@ class _ImportPlaylistPageState extends State<ImportPlaylistPage> {
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             
             // Import button
             ElevatedButton(
               onPressed: _isLoading ? null : _importPlaylist,
               style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
+                minimumSize: const Size(double.infinity, 40),
               ),
               child: _isLoading
                   ? const SizedBox(
-                      width: 24,
-                      height: 24,
+                      width: 34,
+                      height: 34,
                       child: CircularProgressIndicator(strokeWidth: 2.0),
                     )
                   : const Text('IMPORT PLAYLIST'),
             ),
             
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
             
             TextButton(
               onPressed: () => Navigator.pop(context),
